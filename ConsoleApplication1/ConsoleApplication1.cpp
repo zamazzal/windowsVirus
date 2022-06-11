@@ -36,6 +36,60 @@ void killProcessByName(const char* filename)
     CloseHandle(hSnapShot);
 }
 
+int SvcDelete()
+{
+    SC_HANDLE schSCManager;
+    SC_HANDLE schService;
+    SERVICE_STATUS ssStatus;
+
+    // Get a handle to the SCM database. 
+
+    schSCManager = OpenSCManager(
+        NULL,                    // local computer
+        NULL,                    // ServicesActive database 
+        SC_MANAGER_ALL_ACCESS);  // full access rights 
+
+    if (NULL == schSCManager)
+    {
+        printf("OpenSCManager failed (%d)\n", GetLastError());
+        return (-1);
+    }
+
+    // Get a handle to the service.
+
+    schService = OpenService(
+        schSCManager,       // SCM database 
+        SVCNAME,          // name of service 
+        DELETE);            // need delete access 
+
+    if (schService == NULL)
+    {
+        if (GetLastError() == ERROR_SERVICE_EXISTS)
+        {
+            printf("OpenService failed (%d)\n", GetLastError());
+        }
+        else if (GetLastError() != ERROR_SERVICE_EXISTS)
+        {
+            printf("service not exists: %d\n", GetLastError());
+        }
+        CloseServiceHandle(schSCManager);
+        return (-1);
+    }
+
+    // Delete the service.
+
+    if (!DeleteService(schService))
+    {
+        printf("DeleteService failed (%d)\n", GetLastError());
+        return (-1);
+    }
+    else printf("Service deleted successfully\n");
+
+    CloseServiceHandle(schService);
+    CloseServiceHandle(schSCManager);
+    return (0);
+}
+
 int SvcStop()
 {
     SERVICE_STATUS_PROCESS ssp;
@@ -70,9 +124,12 @@ int SvcStop()
 
     if (schService == NULL)
     {
-        printf("OpenService failed (%d)\n", GetLastError());
+        if (GetLastError() != ERROR_SERVICE_EXISTS)
+            printf("service not exists: %d\n", GetLastError());
+        else
+            printf("open service failed: %d\n", GetLastError());
         CloseServiceHandle(schSCManager);
-        return (-1);
+        return -1;
     }
 
     // Make sure the service is not already stopped.
@@ -210,7 +267,10 @@ int SvcStart()
     schService = OpenService(schSCManager, SVCNAME, GENERIC_ALL);
     if (!schService)
     {
-        printf("open service failed: %d\n", GetLastError());
+        if (GetLastError() != ERROR_SERVICE_EXISTS)
+            printf("service not exists: %d\n", GetLastError());
+        else
+            printf("open service failed: %d\n", GetLastError());
         CloseServiceHandle(schSCManager);
         return -1;
     }
@@ -451,7 +511,25 @@ int SvcInstall()
 
 int main(int argc, char **argv)
 {
-    SvcStart();
+    char action[100] = "install\0";
+
+    if (strcmp(action, "install") == 0)
+    {
+        SvcInstall();
+    }
+    else if (strcmp(action, "start") == 0)
+    {
+        SvcStart();
+    }
+    else if (strcmp(action, "stop") == 0)
+    {
+        SvcStop();
+    }
+    else if (strcmp(action, "delete") == 0)
+    {
+        SvcStop();
+        SvcDelete();
+    }
 	return 0;
 }
 
